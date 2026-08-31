@@ -74,6 +74,10 @@ the configuration-file question to preserve all calibration settings. It does
 not remove MedusaHC Core, EddySeek, Klipper, saved offsets, or any other
 printer configuration.
 
+Older archive-based installations without `~/medusahc-calibrate` are also
+supported: the bootstrap uses a temporary checkout only to run the legacy
+cleanup and removes that temporary checkout afterward.
+
 If permission to remove an active include or updater entry is declined, removal
 is cancelled before deleting the module or checkout, preventing broken links.
 
