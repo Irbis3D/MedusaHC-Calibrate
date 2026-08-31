@@ -7,11 +7,20 @@ KLIPPER_DIR=${KLIPPER_DIR:-"$HOME/klipper"}
 CONFIG_DIR=${PRINTER_CONFIG_DIR:-"$HOME/printer_data/config"}
 PRINTER_CFG=${PRINTER_CFG:-"$CONFIG_DIR/printer.cfg"}
 
+if [ -f "$CONFIG_DIR/MedusaHC/MHC_variables.cfg" ]; then
+    CORE_CONFIG_DIR="$CONFIG_DIR/MedusaHC"
+    INCLUDE_FILE="$CORE_CONFIG_DIR/MHC_config.cfg"
+    INCLUDE_LINE="[include MedusaHC/medusahc_calibrate.cfg]"
+else
+    CORE_CONFIG_DIR="$CONFIG_DIR"
+    INCLUDE_FILE="$PRINTER_CFG"
+    INCLUDE_LINE="[include medusahc_calibrate.cfg]"
+fi
+
 SOURCE_MODULE="$SCRIPT_DIR/klippy/extras/medusahc_calibrate.py"
 SOURCE_CONFIG="$SCRIPT_DIR/config/medusahc_calibrate.cfg"
 TARGET_MODULE="$KLIPPER_DIR/klippy/extras/medusahc_calibrate.py"
-TARGET_CONFIG="$CONFIG_DIR/medusahc_calibrate.cfg"
-INCLUDE_LINE="[include medusahc_calibrate.cfg]"
+TARGET_CONFIG="$CORE_CONFIG_DIR/medusahc_calibrate.cfg"
 
 say() {
     printf '%s\n' "[$PROJECT_NAME] $*"
@@ -39,42 +48,63 @@ require_layout() {
     fi
 }
 
+require_core() {
+    missing=""
+    [ -f "$KLIPPER_DIR/klippy/extras/pin_watch.py" ] || missing="$missing pin_watch.py"
+    [ -f "$CORE_CONFIG_DIR/MHC_variables.cfg" ] || missing="$missing MHC_variables.cfg"
+    if [ ! -f "$KLIPPER_DIR/klippy/extras/medusahc.py" ] \
+        && [ ! -f "$CORE_CONFIG_DIR/MHC_macros.cfg" ]; then
+        missing="$missing medusahc.py-or-MHC_macros.cfg"
+    fi
+    if [ -n "$missing" ]; then
+        say "MedusaHC Core dependency is incomplete. Missing:$missing"
+        say "Install and configure MedusaHC Core before MedusaHC-Calibrate."
+        exit 1
+    fi
+}
+
 add_include() {
-    if grep -Fqx "$INCLUDE_LINE" "$PRINTER_CFG"; then
-        say "printer.cfg already includes medusahc_calibrate.cfg"
+    if [ ! -f "$INCLUDE_FILE" ]; then
+        say "Include target not found: $INCLUDE_FILE"
+        say "Add $INCLUDE_LINE manually after preparing the Core configuration."
         return
     fi
-    if ! confirm "Add $INCLUDE_LINE to $PRINTER_CFG?"; then
+    if grep -Fqx "$INCLUDE_LINE" "$INCLUDE_FILE"; then
+        say "$INCLUDE_FILE already includes medusahc_calibrate.cfg"
+        return
+    fi
+    if ! confirm "Add $INCLUDE_LINE to $INCLUDE_FILE?"; then
         say "Include was not added. Add it manually before restarting Klipper."
         return
     fi
-    tmp=$(mktemp "$CONFIG_DIR/.medusahc-calibrate-printer.XXXXXX")
+    tmp=$(mktemp "$CORE_CONFIG_DIR/.medusahc-calibrate-include.XXXXXX")
     {
-        cat "$PRINTER_CFG"
+        cat "$INCLUDE_FILE"
         printf '\n%s\n' "$INCLUDE_LINE"
     } > "$tmp"
-    chmod --reference="$PRINTER_CFG" "$tmp" 2>/dev/null || true
-    mv "$tmp" "$PRINTER_CFG"
-    say "Added include to printer.cfg"
+    chmod --reference="$INCLUDE_FILE" "$tmp" 2>/dev/null || true
+    mv "$tmp" "$INCLUDE_FILE"
+    say "Added include to $INCLUDE_FILE"
 }
 
 remove_include() {
-    if ! grep -Fqx "$INCLUDE_LINE" "$PRINTER_CFG"; then
+    if [ ! -f "$INCLUDE_FILE" ] || ! grep -Fqx "$INCLUDE_LINE" "$INCLUDE_FILE"; then
         return
     fi
-    if ! confirm "Remove $INCLUDE_LINE from $PRINTER_CFG?"; then
+    if ! confirm "Remove $INCLUDE_LINE from $INCLUDE_FILE?"; then
         say "Include was kept. Do not restart Klipper after deleting the config file."
         return
     fi
-    tmp=$(mktemp "$CONFIG_DIR/.medusahc-calibrate-printer.XXXXXX")
-    awk -v line="$INCLUDE_LINE" '$0 != line { print }' "$PRINTER_CFG" > "$tmp"
-    chmod --reference="$PRINTER_CFG" "$tmp" 2>/dev/null || true
-    mv "$tmp" "$PRINTER_CFG"
-    say "Removed include from printer.cfg"
+    tmp=$(mktemp "$CORE_CONFIG_DIR/.medusahc-calibrate-include.XXXXXX")
+    awk -v line="$INCLUDE_LINE" '$0 != line { print }' "$INCLUDE_FILE" > "$tmp"
+    chmod --reference="$INCLUDE_FILE" "$tmp" 2>/dev/null || true
+    mv "$tmp" "$INCLUDE_FILE"
+    say "Removed include from $INCLUDE_FILE"
 }
 
 install_module() {
     require_layout
+    require_core
     [ -f "$SOURCE_MODULE" ] || { say "Missing $SOURCE_MODULE"; exit 1; }
     [ -f "$SOURCE_CONFIG" ] || { say "Missing $SOURCE_CONFIG"; exit 1; }
 
@@ -121,14 +151,14 @@ uninstall_module() {
 show_status() {
     [ -f "$TARGET_MODULE" ] && module_state="installed" || module_state="not installed"
     [ -f "$TARGET_CONFIG" ] && config_state="installed" || config_state="not installed"
-    if [ -f "$PRINTER_CFG" ] && grep -Fqx "$INCLUDE_LINE" "$PRINTER_CFG"; then
+    if [ -f "$INCLUDE_FILE" ] && grep -Fqx "$INCLUDE_LINE" "$INCLUDE_FILE"; then
         include_state="present"
     else
         include_state="absent"
     fi
     say "Klipper module: $module_state"
     say "Calibration config: $config_state"
-    say "printer.cfg include: $include_state"
+    say "configuration include: $include_state ($INCLUDE_FILE)"
 }
 
 menu() {
@@ -149,9 +179,9 @@ menu() {
 }
 
 case "${1:-menu}" in
-    install) install_module ;;
+    install|update) install_module ;;
     uninstall|remove) uninstall_module ;;
     status) show_status ;;
     menu) menu ;;
-    *) say "Usage: $0 [install|uninstall|status]"; exit 1 ;;
+    *) say "Usage: $0 [install|update|uninstall|status]"; exit 1 ;;
 esac

@@ -50,6 +50,25 @@ The installer copies one Klipper extra and one editable configuration file. It
 does not install packages, modify Moonraker, restart services, or reboot the
 printer.
 
+Install directly from GitHub:
+
+```bash
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/Irbis3D/MedusaHC-Calibrate/main/install-online.sh)"
+```
+
+The installer verifies that MedusaHC Core (`medusahc.py`, `pin_watch.py`, and
+`MHC_variables.cfg`) is present. With the current Core layout it stores the
+configuration in `config/MedusaHC/` and asks before adding its include to
+`MHC_config.cfg`. Legacy root-level configurations remain supported.
+
+Update, status, and removal use the same entry point:
+
+```bash
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/Irbis3D/MedusaHC-Calibrate/main/install-online.sh)" -- update
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/Irbis3D/MedusaHC-Calibrate/main/install-online.sh)" -- status
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/Irbis3D/MedusaHC-Calibrate/main/install-online.sh)" -- uninstall
+```
+
 For local testing from a checkout:
 
 ```bash
@@ -57,12 +76,12 @@ cd MedusaHC-Calibrate
 bash install.sh
 ```
 
-The menu provides install/update, removal, and status. The default locations
-are:
+The local script provides install/update, removal, and status. With the current
+Core layout the default locations are:
 
 ```text
 ~/klipper/klippy/extras/medusahc_calibrate.py
-~/printer_data/config/medusahc_calibrate.cfg
+~/printer_data/config/MedusaHC/medusahc_calibrate.cfg
 ```
 
 For another layout, supply paths explicitly:
