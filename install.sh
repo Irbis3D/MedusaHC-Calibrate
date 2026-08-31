@@ -10,11 +10,13 @@ PRINTER_CFG=${PRINTER_CFG:-"$CONFIG_DIR/printer.cfg"}
 if [ -f "$CONFIG_DIR/MedusaHC/MHC_variables.cfg" ]; then
     CORE_CONFIG_DIR="$CONFIG_DIR/MedusaHC"
     INCLUDE_FILE="$CORE_CONFIG_DIR/MHC_config.cfg"
-    INCLUDE_LINE="[include MedusaHC/medusahc_calibrate.cfg]"
+    INCLUDE_LINE="[include medusahc_calibrate.cfg]"
+    OLD_INCLUDE_LINE="[include MedusaHC/medusahc_calibrate.cfg]"
 else
     CORE_CONFIG_DIR="$CONFIG_DIR"
     INCLUDE_FILE="$PRINTER_CFG"
     INCLUDE_LINE="[include medusahc_calibrate.cfg]"
+    OLD_INCLUDE_LINE=""
 fi
 
 SOURCE_MODULE="$SCRIPT_DIR/klippy/extras/medusahc_calibrate.py"
@@ -78,17 +80,28 @@ add_include() {
         return
     fi
     tmp=$(mktemp "$CORE_CONFIG_DIR/.medusahc-calibrate-include.XXXXXX")
-    {
-        cat "$INCLUDE_FILE"
-        printf '\n%s\n' "$INCLUDE_LINE"
-    } > "$tmp"
+    awk -v line="$INCLUDE_LINE" -v old="$OLD_INCLUDE_LINE" '
+        $0 != old || old == "" {
+            content[++count] = $0
+            if ($0 ~ /^[[:space:]]*\[include[[:space:]]+/) last_include = count
+        }
+        END {
+            if (last_include == 0) print line
+            for (i = 1; i <= count; i++) {
+                print content[i]
+                if (i == last_include) print line
+            }
+        }
+    ' "$INCLUDE_FILE" > "$tmp"
     chmod --reference="$INCLUDE_FILE" "$tmp" 2>/dev/null || true
     mv "$tmp" "$INCLUDE_FILE"
     say "Added include to $INCLUDE_FILE"
 }
 
 remove_include() {
-    if [ ! -f "$INCLUDE_FILE" ] || ! grep -Fqx "$INCLUDE_LINE" "$INCLUDE_FILE"; then
+    if [ ! -f "$INCLUDE_FILE" ] \
+        || { ! grep -Fqx "$INCLUDE_LINE" "$INCLUDE_FILE" \
+            && { [ -z "$OLD_INCLUDE_LINE" ] || ! grep -Fqx "$OLD_INCLUDE_LINE" "$INCLUDE_FILE"; }; }; then
         return
     fi
     if ! confirm "Remove $INCLUDE_LINE from $INCLUDE_FILE?"; then
@@ -96,7 +109,8 @@ remove_include() {
         return
     fi
     tmp=$(mktemp "$CORE_CONFIG_DIR/.medusahc-calibrate-include.XXXXXX")
-    awk -v line="$INCLUDE_LINE" '$0 != line { print }' "$INCLUDE_FILE" > "$tmp"
+    awk -v line="$INCLUDE_LINE" -v old="$OLD_INCLUDE_LINE" \
+        '$0 != line && (old == "" || $0 != old) { print }' "$INCLUDE_FILE" > "$tmp"
     chmod --reference="$INCLUDE_FILE" "$tmp" 2>/dev/null || true
     mv "$tmp" "$INCLUDE_FILE"
     say "Removed include from $INCLUDE_FILE"
@@ -153,6 +167,9 @@ show_status() {
     [ -f "$TARGET_CONFIG" ] && config_state="installed" || config_state="not installed"
     if [ -f "$INCLUDE_FILE" ] && grep -Fqx "$INCLUDE_LINE" "$INCLUDE_FILE"; then
         include_state="present"
+    elif [ -n "$OLD_INCLUDE_LINE" ] && [ -f "$INCLUDE_FILE" ] \
+        && grep -Fqx "$OLD_INCLUDE_LINE" "$INCLUDE_FILE"; then
+        include_state="obsolete path (run update to replace it)"
     else
         include_state="absent"
     fi

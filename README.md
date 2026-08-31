@@ -92,11 +92,18 @@ PRINTER_CONFIG_DIR=/path/to/printer_data/config \
 bash install.sh
 ```
 
-The installer asks before adding the following line to `printer.cfg`:
+With the current Core layout, the installer asks before adding the following
+relative include to the include block at the top of
+`MedusaHC/MHC_config.cfg`:
 
 ```ini
 [include medusahc_calibrate.cfg]
 ```
+
+For a legacy root-level Core layout, the same line is added to `printer.cfg`
+instead. An older incorrect
+`[include MedusaHC/medusahc_calibrate.cfg]` entry in `MHC_config.cfg` is replaced
+during an approved install or update.
 
 Existing calibration configuration is preserved during updates. Nothing is
 restarted automatically. Review the file and restart Klipper yourself only
@@ -107,7 +114,7 @@ when the printer is idle.
 All MedusaHC-Calibrate settings and Mainsail/Fluidd macro entry points are in:
 
 ```text
-~/printer_data/config/medusahc_calibrate.cfg
+~/printer_data/config/MedusaHC/medusahc_calibrate.cfg
 ```
 
 The configuration is divided into Common, Contact sensor, Eddy Tap, and
