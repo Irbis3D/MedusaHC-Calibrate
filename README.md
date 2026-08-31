@@ -1,5 +1,8 @@
 # MedusaHC-Calibrate
 
+> [!IMPORTANT]
+> **[Installation, updates, removal, and manual setup](INSTALLATION.md)**
+
 Experimental independent tool-offset calibration module for
 [MedusaHC](https://github.com/Irbis3D/MedusaHC).
 
