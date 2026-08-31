@@ -123,7 +123,8 @@ instead. An older incorrect
 `[include MedusaHC/medusahc_calibrate.cfg]` entry in `MHC_config.cfg` is replaced
 during an approved install or update.
 
-Existing calibration configuration is preserved during updates. Nothing is
+Existing calibration configuration is preserved during updates and is removed
+only after a separate confirmation during uninstall. Nothing is
 restarted automatically by the command-line installer. Review the file and
 restart Klipper or Moonraker yourself only when the printer is idle. Updates
 started later through Moonraker may restart the managed Klipper service.

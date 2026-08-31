@@ -69,10 +69,10 @@ The uninstaller separately asks before removing:
 - the managed Update Manager block from `moonraker.conf`;
 - the editable `medusahc_calibrate.cfg` file.
 
-It removes the Klipper module link and the managed Git checkout. Answer `n` to
-the configuration-file question to preserve all calibration settings. It does
-not remove MedusaHC Core, EddySeek, Klipper, saved offsets, or any other
-printer configuration.
+It removes the Klipper module link and the managed Git checkout. The editable
+`medusahc_calibrate.cfg` is preserved by default; it is deleted only after a
+separate explicit `y` answer. It does not remove MedusaHC Core, EddySeek,
+Klipper, saved offsets, or any other printer configuration.
 
 Older archive-based installations without `~/medusahc-calibrate` are also
 supported: the bootstrap uses a temporary checkout only to run the legacy
