@@ -56,10 +56,25 @@ Install directly from GitHub:
 bash -c "$(curl -fsSL https://raw.githubusercontent.com/Irbis3D/MedusaHC-Calibrate/main/install-online.sh)"
 ```
 
-The installer verifies that MedusaHC Core (`medusahc.py`, `pin_watch.py`, and
-`MHC_variables.cfg`) is present. With the current Core layout it stores the
-configuration in `config/MedusaHC/` and asks before adding its include to
-`MHC_config.cfg`. Legacy root-level configurations remain supported.
+The installer keeps a clean checkout in `~/medusahc-calibrate`, verifies that
+MedusaHC Core (`medusahc.py`, `pin_watch.py`, and `MHC_variables.cfg`) is
+present, and links the Klipper module from that checkout. With the current Core
+layout it stores the editable configuration in `config/MedusaHC/` and asks
+before adding its include to `MHC_config.cfg`. Legacy root-level configurations
+remain supported.
+
+The installer separately asks whether it may add a marked
+`[update_manager medusahc-calibrate]` block directly to `moonraker.conf`. If
+approved, MedusaHC-Calibrate appears in the normal Mainsail/Fluidd Update
+Manager. Moonraker updates the clean checkout and restarts Klipper; the linked
+module immediately uses the new code. The editable calibration config is
+outside the repository and is never overwritten by an update. No extra
+Moonraker include file is created.
+
+If Calibrate was installed by the earlier archive-based installer, run the
+normal install command once more. It creates the persistent checkout, replaces
+the old copied Klipper module with the managed link, and preserves the existing
+calibration configuration.
 
 Update, status, and removal use the same entry point:
 
@@ -106,8 +121,9 @@ instead. An older incorrect
 during an approved install or update.
 
 Existing calibration configuration is preserved during updates. Nothing is
-restarted automatically. Review the file and restart Klipper yourself only
-when the printer is idle.
+restarted automatically by the command-line installer. Review the file and
+restart Klipper or Moonraker yourself only when the printer is idle. Updates
+started later through Moonraker may restart the managed Klipper service.
 
 ## Configuration overview
 

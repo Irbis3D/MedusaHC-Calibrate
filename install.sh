@@ -6,6 +6,9 @@ SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 KLIPPER_DIR=${KLIPPER_DIR:-"$HOME/klipper"}
 CONFIG_DIR=${PRINTER_CONFIG_DIR:-"$HOME/printer_data/config"}
 PRINTER_CFG=${PRINTER_CFG:-"$CONFIG_DIR/printer.cfg"}
+MOONRAKER_CFG=${MOONRAKER_CFG:-"$CONFIG_DIR/moonraker.conf"}
+MOONRAKER_BEGIN="# >>> MEDUSAHC CALIBRATE UPDATE MANAGER >>>"
+MOONRAKER_END="# <<< MEDUSAHC CALIBRATE UPDATE MANAGER <<<"
 
 if [ -f "$CONFIG_DIR/MedusaHC/MHC_variables.cfg" ]; then
     CORE_CONFIG_DIR="$CONFIG_DIR/MedusaHC"
@@ -23,6 +26,63 @@ SOURCE_MODULE="$SCRIPT_DIR/klippy/extras/medusahc_calibrate.py"
 SOURCE_CONFIG="$SCRIPT_DIR/config/medusahc_calibrate.cfg"
 TARGET_MODULE="$KLIPPER_DIR/klippy/extras/medusahc_calibrate.py"
 TARGET_CONFIG="$CORE_CONFIG_DIR/medusahc_calibrate.cfg"
+
+add_moonraker_updater() {
+    [ -f "$MOONRAKER_CFG" ] || { say "moonraker.conf not found; updater was not registered."; return; }
+    grep -Fqx "$MOONRAKER_BEGIN" "$MOONRAKER_CFG" && { say "Moonraker updater already registered"; return; }
+    if grep -Eq '^[[:space:]]*\[update_manager[[:space:]]+medusahc-calibrate\][[:space:]]*$' "$MOONRAKER_CFG"; then
+        say "An unmanaged medusahc-calibrate updater already exists; Moonraker was not changed."
+        return
+    fi
+    confirm "Add the MedusaHC-Calibrate update_manager block directly to $MOONRAKER_CFG?" || {
+        say "Moonraker configuration was not changed."
+        return
+    }
+    tmp=$(mktemp "$CONFIG_DIR/.medusahc-calibrate-moonraker.XXXXXX")
+    {
+        cat "$MOONRAKER_CFG"
+        printf '\n%s\n' "$MOONRAKER_BEGIN"
+        printf '%s\n' '[update_manager medusahc-calibrate]'
+        printf '%s\n' 'type: git_repo'
+        printf '%s\n' 'channel: dev'
+        printf 'path: %s\n' "$SCRIPT_DIR"
+        printf '%s\n' 'origin: https://github.com/Irbis3D/MedusaHC-Calibrate.git'
+        printf '%s\n' 'primary_branch: main'
+        printf '%s\n' 'managed_services: klipper'
+        printf '%s\n' "$MOONRAKER_END"
+    } > "$tmp"
+    chmod --reference="$MOONRAKER_CFG" "$tmp" 2>/dev/null || true
+    mv "$tmp" "$MOONRAKER_CFG"
+    say "Moonraker updater registered. Restart Moonraker manually while the printer is idle."
+}
+
+remove_moonraker_updater() {
+    [ -f "$MOONRAKER_CFG" ] && grep -Fqx "$MOONRAKER_BEGIN" "$MOONRAKER_CFG" || return 0
+    begin_count=$(grep -Fxc "$MOONRAKER_BEGIN" "$MOONRAKER_CFG")
+    end_count=$(grep -Fxc "$MOONRAKER_END" "$MOONRAKER_CFG")
+    if [ "$begin_count" -ne 1 ] || [ "$end_count" -ne 1 ]; then
+        say "Managed Moonraker markers are malformed; refusing to edit $MOONRAKER_CFG"
+        return 1
+    fi
+    [ "${REMOVE_CONFIRMED:-0}" -eq 1 ] || confirm "Remove the MedusaHC-Calibrate update_manager block from $MOONRAKER_CFG?" || {
+        say "Moonraker configuration was kept."
+        return 1
+    }
+    tmp=$(mktemp "$CONFIG_DIR/.medusahc-calibrate-moonraker.XXXXXX")
+    awk -v begin="$MOONRAKER_BEGIN" -v end="$MOONRAKER_END" '
+        { content[NR] = $0; if ($0 == begin) first = NR; if ($0 == end) last = NR }
+        END {
+            for (i = 1; i <= NR; i++) {
+                if (i >= first && i <= last) continue
+                if (i == first - 1 && content[i] == "") continue
+                print content[i]
+            }
+        }
+    ' "$MOONRAKER_CFG" > "$tmp"
+    chmod --reference="$MOONRAKER_CFG" "$tmp" 2>/dev/null || true
+    mv "$tmp" "$MOONRAKER_CFG"
+    say "Moonraker updater removed. Restart Moonraker manually while the printer is idle."
+}
 
 say() {
     printf '%s\n' "[$PROJECT_NAME] $*"
@@ -104,7 +164,7 @@ remove_include() {
             && { [ -z "$OLD_INCLUDE_LINE" ] || ! grep -Fqx "$OLD_INCLUDE_LINE" "$INCLUDE_FILE"; }; }; then
         return
     fi
-    if ! confirm "Remove $INCLUDE_LINE from $INCLUDE_FILE?"; then
+    if [ "${REMOVE_CONFIRMED:-0}" -ne 1 ] && ! confirm "Remove $INCLUDE_LINE from $INCLUDE_FILE?"; then
         say "Include was kept. Do not restart Klipper after deleting the config file."
         return
     fi
@@ -129,7 +189,8 @@ install_module() {
             return
         }
     fi
-    install -m 0644 "$SOURCE_MODULE" "$TARGET_MODULE"
+    rm -f -- "$TARGET_MODULE"
+    ln -s "$SOURCE_MODULE" "$TARGET_MODULE"
     say "Installed Klipper module: $TARGET_MODULE"
 
     if [ -e "$TARGET_CONFIG" ]; then
@@ -140,13 +201,44 @@ install_module() {
         say "Installed editable configuration: $TARGET_CONFIG"
     fi
     add_include
+    add_moonraker_updater
     say "Installation complete. Review every coordinate and pin before restarting Klipper."
 }
 
 uninstall_module() {
     require_layout
     say "No services will be restarted automatically."
+    if [ -f "$MOONRAKER_CFG" ] \
+        && grep -Eq '^[[:space:]]*\[update_manager[[:space:]]+medusahc-calibrate\][[:space:]]*$' "$MOONRAKER_CFG" \
+        && ! grep -Fqx "$MOONRAKER_BEGIN" "$MOONRAKER_CFG"; then
+        say "An unmanaged medusahc-calibrate updater remains in $MOONRAKER_CFG."
+        say "Remove it manually before uninstalling so it does not point to a deleted checkout."
+        return 1
+    fi
+    include_present=0
+    if [ -f "$INCLUDE_FILE" ] && { grep -Fqx "$INCLUDE_LINE" "$INCLUDE_FILE" \
+        || { [ -n "$OLD_INCLUDE_LINE" ] && grep -Fqx "$OLD_INCLUDE_LINE" "$INCLUDE_FILE"; }; }; then
+        include_present=1
+    fi
+    moonraker_present=0
+    if [ -f "$MOONRAKER_CFG" ] && grep -Fqx "$MOONRAKER_BEGIN" "$MOONRAKER_CFG"; then
+        moonraker_present=1
+        begin_count=$(grep -Fxc "$MOONRAKER_BEGIN" "$MOONRAKER_CFG")
+        end_count=$(grep -Fxc "$MOONRAKER_END" "$MOONRAKER_CFG")
+        if [ "$begin_count" -ne 1 ] || [ "$end_count" -ne 1 ]; then
+            say "Managed Moonraker markers are malformed; removal cancelled before changing files."
+            return 1
+        fi
+    fi
+    if [ "$include_present" -eq 1 ]; then
+        confirm "Remove $INCLUDE_LINE from $INCLUDE_FILE?" || { say "Removal cancelled before changing files."; return 1; }
+    fi
+    if [ "$moonraker_present" -eq 1 ]; then
+        confirm "Remove the MedusaHC-Calibrate update_manager block from $MOONRAKER_CFG?" || { say "Removal cancelled before changing files."; return 1; }
+    fi
+    REMOVE_CONFIRMED=1
     remove_include
+    remove_moonraker_updater
     if [ -f "$TARGET_MODULE" ]; then
         rm -f -- "$TARGET_MODULE"
         say "Removed Klipper module: $TARGET_MODULE"
@@ -176,6 +268,12 @@ show_status() {
     say "Klipper module: $module_state"
     say "Calibration config: $config_state"
     say "configuration include: $include_state ($INCLUDE_FILE)"
+    if [ -f "$MOONRAKER_CFG" ] && grep -Fqx "$MOONRAKER_BEGIN" "$MOONRAKER_CFG"; then
+        updater_state="registered"
+    else
+        updater_state="not registered"
+    fi
+    say "Moonraker updater: $updater_state"
 }
 
 menu() {
